@@ -1,7 +1,9 @@
 import { recast } from 'storybook/internal/babel';
+import { Tag } from 'storybook/internal/core-server';
+import { storyNameFromExport } from 'storybook/internal/csf';
 import { extractDescription, loadCsf } from 'storybook/internal/csf-tools';
 import { logger } from 'storybook/internal/node-logger';
-import type { IndexEntry } from 'storybook/internal/types';
+import type { DocsIndexEntry, IndexEntry } from 'storybook/internal/types';
 import {
   type ComponentManifest,
   type PresetPropertyFn,
@@ -60,22 +62,24 @@ function extractStories(
       // Only include stories that are in the list of entries already filtered for the 'manifest' tag
       manifestEntryIds.has(story.id)
     )
-    .map(([storyName]) => {
+    .map(([storyExport, story]) => {
       try {
-        const jsdocComment = extractDescription(csf._storyStatements[storyName]);
+        const jsdocComment = extractDescription(csf._storyStatements[storyExport]);
         const { tags = {}, description } = jsdocComment ? extractJSDocInfo(jsdocComment) : {};
         const finalDescription = (tags?.describe?.[0] || tags?.desc?.[0]) ?? description;
 
         return {
-          name: storyName,
-          snippet: recast.print(getCodeSnippet(csf, storyName, componentName)).code,
+          id: story.id,
+          name: story.name ?? storyNameFromExport(storyExport),
+          snippet: recast.print(getCodeSnippet(csf, storyExport, componentName)).code,
           description: finalDescription?.trim(),
           summary: tags.summary?.[0],
         };
       } catch (e) {
         invariant(e instanceof Error);
         return {
-          name: storyName,
+          id: story.id,
+          name: story.name ?? storyNameFromExport(storyExport),
           error: { name: e.name, message: e.message },
         };
       }
@@ -105,13 +109,26 @@ export const manifests: PresetPropertyFn<
   const startPerformance = performance.now();
 
   const entriesByUniqueComponent = uniqBy(
-    manifestEntries.filter((entry) => entry.type === 'story' && entry.subtype === 'story'),
+    manifestEntries.filter(
+      (entry) =>
+        (entry.type === 'story' && entry.subtype === 'story') ||
+        // addon-docs will add docs entries to these manifest entries afterwards
+        // Docs entries have importPath pointing to MDX file, but storiesImports[0] points to the story file
+        (entry.type === 'docs' &&
+          entry.tags?.includes(Tag.ATTACHED_MDX) &&
+          entry.storiesImports.length > 0)
+    ),
     (entry) => entry.id.split('--')[0]
   );
 
   const components = entriesByUniqueComponent
     .map((entry): ReactComponentManifest | undefined => {
-      const absoluteImportPath = path.join(process.cwd(), entry.importPath);
+      const storyFilePath =
+        entry.type === 'story'
+          ? entry.importPath
+          : // For attached docs entries, storiesImports[0] points to the stories file being attached to
+            (entry as DocsIndexEntry).storiesImports[0];
+      const absoluteImportPath = path.join(process.cwd(), storyFilePath);
       const storyFile = cachedReadFileSync(absoluteImportPath, 'utf-8') as string;
       const csf = loadCsf(storyFile, { makeTitle: (title) => title ?? 'No title' }).parse();
 
@@ -137,7 +154,7 @@ export const manifests: PresetPropertyFn<
       const base = {
         id,
         name: componentName ?? title,
-        path: entry.importPath,
+        path: storyFilePath,
         stories,
         import: imports,
         jsDocTags: {},

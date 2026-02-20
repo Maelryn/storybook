@@ -38,6 +38,7 @@ const ChildrenContainer = styled.div<PreviewProps & { layout: Layout }>(
     flexWrap: 'wrap',
     overflow: 'auto',
     flexDirection: isColumn ? 'column' : 'row',
+    width: 'fit-content',
 
     '& .innerZoomElementWrapper > *': isColumn
       ? {
@@ -172,9 +173,18 @@ const PositionedToolbar = styled(Toolbar)({
   height: 40,
 });
 
-const Relative = styled.div({
+const Relative = styled.div(({ theme }) => ({
   overflow: 'hidden',
   position: 'relative',
+  display: 'flex',
+  flexWrap: 'wrap',
+  gap: theme.layoutMargin,
+}));
+
+const RelativeActionBar = styled(ActionBar)({
+  position: 'relative',
+  marginLeft: 'auto',
+  alignSelf: 'flex-end',
 });
 
 /**
@@ -260,7 +270,6 @@ export const Preview: FC<PreviewProps> = ({
           zoom={(z: number) => setScale(scale * z)}
           resetZoom={() => setScale(1)}
           storyId={!isLoading && childProps ? getStoryId(childProps, context) : undefined}
-          baseUrl="./iframe.html"
         />
       )}
       <ZoomContext.Provider value={{ scale }}>
@@ -279,7 +288,7 @@ export const Preview: FC<PreviewProps> = ({
               )}
             </Zoom.Element>
           </ChildrenContainer>
-          <ActionBar actionItems={actionItems} />
+          <RelativeActionBar actionItems={actionItems} />
         </Relative>
       </ZoomContext.Provider>
       {withSource && expanded && source}

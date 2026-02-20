@@ -32,7 +32,7 @@ export interface CoreConfig {
       };
   renderer?: RendererName;
   disableWebpackDefaults?: boolean;
-  channelOptions?: Partial<TelejsonOptions>;
+  channelOptions?: Partial<TelejsonOptions> & { wsToken?: string };
   /** Disables the generation of project.json, a file containing Storybook metadata */
   disableProjectJson?: boolean;
   /**
@@ -354,14 +354,14 @@ export interface ComponentManifest {
   id: string;
   path: string;
   name: string;
-  description?: string;
-  import?: string;
-  summary?: string;
+  description?: string | undefined;
+  import?: string | undefined;
+  summary?: string | undefined;
   stories: {
     name: string;
-    snippet?: string;
-    description?: string;
-    summary?: string;
+    snippet?: string | undefined;
+    description?: string | undefined;
+    summary?: string | undefined;
     error?: { name: string; message: string };
   }[];
   jsDocTags: Record<string, string[]>;
@@ -452,6 +452,13 @@ export interface StorybookConfigRaw {
      * @default true
      */
     actions?: boolean;
+
+    /**
+     * Enable the onboarding checklist sidebar widget
+     *
+     * @default true
+     */
+    sidebarOnboardingChecklist?: boolean;
 
     /**
      * @temporary This feature flag is a migration assistant, and is scheduled to be removed.

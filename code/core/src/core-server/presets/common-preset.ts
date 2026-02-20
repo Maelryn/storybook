@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 
@@ -13,7 +14,7 @@ import {
   removeAddon as removeAddonBase,
 } from 'storybook/internal/common';
 import { StoryIndexGenerator } from 'storybook/internal/core-server';
-import { readCsf } from 'storybook/internal/csf-tools';
+import { loadCsf } from 'storybook/internal/csf-tools';
 import { logger } from 'storybook/internal/node-logger';
 import { telemetry } from 'storybook/internal/telemetry';
 import type {
@@ -32,8 +33,9 @@ import { dedent } from 'ts-dedent';
 import { resolvePackageDir } from '../../shared/utils/module';
 import { initCreateNewStoryChannel } from '../server-channel/create-new-story-channel';
 import { initFileSearchChannel } from '../server-channel/file-search-channel';
+import { initGhostStoriesChannel } from '../server-channel/ghost-stories-channel';
 import { initOpenInEditorChannel } from '../server-channel/open-in-editor-channel';
-import { initPreviewInitializedChannel } from '../server-channel/preview-initialized-channel';
+import { initTelemetryChannel } from '../server-channel/telemetry-channel';
 import { initializeChecklist } from '../utils/checklist';
 import { defaultFavicon, defaultStaticDirs } from '../utils/constants';
 import { initializeSaveStory } from '../utils/save-story/save-story';
@@ -189,8 +191,13 @@ export const experimental_serverAPI = (extension: Record<string, Function>, opti
  * ...existing, someConfig })`, just overwriting everything and not merging with the existing
  * values.
  */
+const wsToken = randomUUID();
 export const core = async (existing: CoreConfig, options: Options): Promise<CoreConfig> => ({
   ...existing,
+  channelOptions: {
+    ...(existing?.channelOptions ?? {}),
+    ...(options.configType === 'DEVELOPMENT' ? { wsToken } : {}),
+  },
   disableTelemetry: options.disableTelemetry === true,
   enableCrashReports:
     options.enableCrashReports || optionalEnvToBoolean(process.env.STORYBOOK_ENABLE_CRASH_REPORTS),
@@ -209,11 +216,19 @@ export const features: PresetProperty<'features'> = async (existing) => ({
   backgrounds: true,
   outline: true,
   measure: true,
+  sidebarOnboardingChecklist: true,
 });
 
 export const csfIndexer: Indexer = {
   test: /(stories|story)\.(m?js|ts)x?$/,
-  createIndex: async (fileName, options) => (await readCsf(fileName, options)).parse().indexInputs,
+  createIndex: async (fileName, options) => {
+    const code = (await readFile(fileName, 'utf-8')).toString();
+    if (code.trim().length === 0) {
+      logger.debug(`The file ${fileName} is empty. Skipping indexing.`);
+      return [];
+    }
+    return loadCsf(code, { ...options, fileName }).parse().indexInputs;
+  },
 };
 
 export const experimental_indexers: PresetProperty<'experimental_indexers'> = (existingIndexers) =>
@@ -248,6 +263,10 @@ export const managerHead = async (_: any, options: Options) => {
   return '';
 };
 
+export const channelToken = async (value: string | undefined) => {
+  return value;
+};
+
 export const experimental_serverChannel = async (
   channel: Channel,
   options: OptionsWithRequiredCache
@@ -260,8 +279,9 @@ export const experimental_serverChannel = async (
 
   initFileSearchChannel(channel, options, coreOptions);
   initCreateNewStoryChannel(channel, options, coreOptions);
+  initGhostStoriesChannel(channel, options, coreOptions);
   initOpenInEditorChannel(channel, options, coreOptions);
-  initPreviewInitializedChannel(channel, options, coreOptions);
+  initTelemetryChannel(channel, options);
 
   return channel;
 };
